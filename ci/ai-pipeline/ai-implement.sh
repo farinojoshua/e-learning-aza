@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Runs INSIDE the ci-agent container. Invokes Claude Code CLI to implement a
-# GitHub issue. Does NOT touch git (no commit/push) - the host does that
-# after re-checking guardrails. See ci/ai-pipeline/lib/guardrails.sh.
+# Runs INSIDE the ci-agent container. Step 2 of 2 in the TDD workflow:
+# resumes the session from ai-write-tests.sh and implements the code that
+# makes those tests pass (green phase). Does NOT touch git - the host
+# commits/pushes after re-checking guardrails. See lib/guardrails.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,6 +12,7 @@ source "$SCRIPT_DIR/lib/common.sh"
 : "${ISSUE_NUMBER:?ISSUE_NUMBER is required}"
 : "${ISSUE_TITLE:?ISSUE_TITLE is required}"
 : "${ISSUE_BODY:=}"
+: "${COVERAGE_THRESHOLD:?COVERAGE_THRESHOLD is required}"
 # Auth via Claude subscription (Pro/Max), not a pay-per-token API key. Token
 # comes from running `claude setup-token` once, interactively, on any
 # machine logged into the subscription - see SETUP.md.
@@ -22,46 +24,53 @@ RESULT_JSON="${AI_RESULT_JSON:-ai-implement-result.json}"
 MAX_TURNS="${AI_MAX_TURNS:-30}"
 SETTINGS_FILE="$SCRIPT_DIR/claude-settings.ci.json"
 
-# Own a session ID up front (rather than parsing one out of the JSON result)
-# and write it to the workspace so ai-fix.sh can --resume it instead of
-# starting a brand new session per fix attempt. Requires the caller to run
-# this with HOME pointed at a path under the workspace (so session state
-# actually persists to the next `podman run`, since containers are --rm) -
-# see the Jenkinsfile. Falls back to a fresh session next time if this file
-# is missing; never fatal on its own.
+# Resume the ai-write-tests.sh session (same HOME as that step, mounted from
+# the workspace) so this step sees the exact tests it needs to satisfy,
+# instead of re-deriving requirements from the issue text alone. Falls back
+# to a fresh session if the file's missing, which still works, just costs
+# more tokens re-establishing context.
 SESSION_ID_FILE=".claude-session-id"
-SESSION_ID="$(cat /proc/sys/kernel/random/uuid)"
-echo "$SESSION_ID" > "$SESSION_ID_FILE"
+RESUME_ARGS=()
+if [[ -f "$SESSION_ID_FILE" ]]; then
+  RESUME_ARGS=(--resume "$(cat "$SESSION_ID_FILE")")
+  log "Resuming write-tests session $(cat "$SESSION_ID_FILE") to implement"
+else
+  log "No prior session file found, starting a fresh session to implement"
+fi
 
 # ISSUE_TITLE / ISSUE_BODY are attacker-controlled (anyone who can open an
 # issue controls this text). They are only ever used as plain prompt text
 # here, never passed through eval/sh -c, so there is no shell-injection
 # surface - but keep it that way if you touch this file.
 PROMPT="$(cat <<EOF
-You are implementing a GitHub issue in an automated CI pipeline. Work only
-inside this repository checkout.
+This is step 2 of 2 of the test-driven workflow for issue #${ISSUE_NUMBER}:
+${ISSUE_TITLE}
 
-Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}
-
-${ISSUE_BODY}
+The tests for this issue already exist (you just wrote them in the previous
+step). Now implement the code that makes them pass.
 
 Instructions:
-- Implement the change described above, following the existing code style and
-  conventions in this repository.
-- Add or update unit tests that cover the change. Do not skip writing tests.
+- Implement the change, following the existing code style and conventions in
+  this repository. Do not weaken, skip, or delete the tests you just wrote to
+  make them pass artificially - make the implementation actually correct.
+- The validation stage will run the test suite with
+  \`node --test --experimental-test-coverage\` and requires at least
+  ${COVERAGE_THRESHOLD}% line, branch, and function coverage. If your
+  implementation leaves branches uncovered, add the missing test cases too
+  (edge cases, error paths) rather than leaving them untested.
 - Do NOT modify: Jenkinsfile, anything under ci/ or podman/, .github/workflows/**,
   any .env/secret/credential/key file, or anything under k8s/, deploy/, infra/,
   terraform/. These paths are off-limits in this pipeline and are enforced
   outside of your control - attempting to edit them wastes your turns.
 - Do NOT run git commit, git push, or any gh command. The pipeline handles
   commit and push itself after you finish.
-- Keep the change scoped to what the issue asks for.
+- Do NOT add any new npm dependency.
 EOF
 )"
 
-log "Invoking Claude Code CLI to implement issue #${ISSUE_NUMBER} (session $SESSION_ID)"
+log "Invoking Claude Code CLI to implement issue #${ISSUE_NUMBER}"
 if ! claude -p "$PROMPT" \
-  --session-id "$SESSION_ID" \
+  "${RESUME_ARGS[@]}" \
   --settings "$SETTINGS_FILE" \
   --permission-mode acceptEdits \
   --max-turns "$MAX_TURNS" \

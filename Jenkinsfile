@@ -2,10 +2,12 @@
 // AI-driven Issue -> Code -> PR pipeline.
 //
 // Flow: GitHub Issue (labeled "ai-task") opened -> webhook triggers this job ->
-// branch created -> Claude Code CLI implements the issue + tests -> build/test/
-// SonarQube/Trivy run -> on failure, log is fed back to Claude Code CLI for a
-// bounded number of fix attempts -> once green, a PR is opened against
-// BASE_BRANCH for human review.
+// branch created -> Claude Code CLI writes tests (red) -> Claude Code CLI
+// implements code against those tests (green, same resumed session) ->
+// build/unit-test-with-coverage/SonarQube/Trivy run -> on failure (including
+// a coverage shortfall), the log is fed back to a resumed Claude Code CLI
+// session for a bounded number of fix attempts -> once green, a PR is opened
+// against BASE_BRANCH for human review.
 //
 // DEPLOY IS INTENTIONALLY NOT PART OF THIS FILE. This pipeline stops at
 // opening a Pull Request. Do not add a deploy stage here - this project is
@@ -46,6 +48,10 @@ pipeline {
            description: 'Run the Trivy security scan stage. Off by default while ' +
                          'iterating (a failing scan burns an AI fix attempt) - flip ' +
                          'to true before relying on this for anything real.')
+    string(name: 'COVERAGE_THRESHOLD', defaultValue: '95',
+           description: 'Minimum line/branch/function coverage percent required by the ' +
+                         'unit-test stage (node --test --experimental-test-coverage). ' +
+                         'Below this, the stage fails and self-heal kicks in.')
   }
 
   options {
@@ -119,6 +125,9 @@ pipeline {
             returnStdout: true
           ).trim()
           env.BRANCH_NAME = "ai/issue-${env.ISSUE_NUMBER}-${env.SLUG}"
+          // Admin-controlled build parameter, not webhook input - safe to
+          // Groovy-interpolate (unlike ISSUE_TITLE/ISSUE_BODY above).
+          env.COVERAGE_THRESHOLD = params.COVERAGE_THRESHOLD
         }
         sh '''#!/usr/bin/env bash
           set -euo pipefail
@@ -130,18 +139,45 @@ pipeline {
       }
     }
 
-    stage('AI Implement') {
+    stage('AI Write Tests') {
       steps {
         sh '''#!/usr/bin/env bash
           set -euo pipefail
           # HOME points inside the bind-mounted workspace (not the container's
           # own ephemeral filesystem) so Claude's session state written here
-          # survives into the next `podman run` for ai-fix.sh, even though
-          # each container is --rm. Same HOME used below for the fix attempt.
+          # survives into the next `podman run` for ai-implement.sh / ai-fix.sh,
+          # even though each container is --rm. Same HOME used by both below.
           podman run --rm \
             -v "$WORKSPACE:/workspace:Z" -w /workspace \
             -e HOME=/workspace/.claude-home \
             -e ISSUE_NUMBER -e ISSUE_TITLE -e ISSUE_BODY -e CLAUDE_CODE_OAUTH_TOKEN \
+            "$CI_AGENT_IMAGE" \
+            ci/ai-pipeline/ai-write-tests.sh
+        '''
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          . ci/ai-pipeline/lib/guardrails.sh
+          check_forbidden_paths
+          assert_safe_branch "$BRANCH_NAME"
+          git add -A
+          git commit -m "AI: write tests for issue #${ISSUE_NUMBER} - ${ISSUE_TITLE}"
+          # --force: this branch is exclusively owned/written by this pipeline
+          # (never by a human), so a retriggered run for the same issue should
+          # replace the previous AI attempt outright, not merge with it.
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GIT_REPO_SLUG}.git" "$BRANCH_NAME"
+        '''
+      }
+    }
+
+    stage('AI Implement Code') {
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          podman run --rm \
+            -v "$WORKSPACE:/workspace:Z" -w /workspace \
+            -e HOME=/workspace/.claude-home \
+            -e ISSUE_NUMBER -e ISSUE_TITLE -e ISSUE_BODY -e COVERAGE_THRESHOLD \
+            -e CLAUDE_CODE_OAUTH_TOKEN \
             "$CI_AGENT_IMAGE" \
             ci/ai-pipeline/ai-implement.sh
         '''
@@ -152,9 +188,6 @@ pipeline {
           assert_safe_branch "$BRANCH_NAME"
           git add -A
           git commit -m "AI: implement issue #${ISSUE_NUMBER} - ${ISSUE_TITLE}"
-          # --force: this branch is exclusively owned/written by this pipeline
-          # (never by a human), so a retriggered run for the same issue should
-          # replace the previous AI attempt outright, not merge with it.
           git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GIT_REPO_SLUG}.git" "$BRANCH_NAME"
         '''
       }
@@ -181,11 +214,22 @@ pipeline {
                 sh -c "npm ci && npm run build --if-present" 2>&1 | tee build.log
             '''
           }
+          // Coverage threshold is enforced by node's own test runner (exits
+          // non-zero below the minimum, with a report of exactly which
+          // lines/branches are uncovered) - no separate "coverage" stage or
+          // custom parsing needed. A shortfall lands here as a normal
+          // unit-test failure, which the self-heal loop below feeds back to
+          // a resumed Claude session pointed at ai-implement.sh's context.
           checks['unit-test'] = {
             sh '''#!/usr/bin/env bash
               set -euo pipefail
               podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
-                npm test 2>&1 | tee unit-test.log
+                npm test -- \
+                  --experimental-test-coverage \
+                  --test-coverage-lines="$COVERAGE_THRESHOLD" \
+                  --test-coverage-branches="$COVERAGE_THRESHOLD" \
+                  --test-coverage-functions="$COVERAGE_THRESHOLD" \
+                2>&1 | tee unit-test.log
             '''
           }
           // Off by default (ENABLE_SONARQUBE param) until a SonarQube server

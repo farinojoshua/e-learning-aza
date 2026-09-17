@@ -51,6 +51,11 @@ Instructions:
 - Do not weaken, skip, or delete tests just to make the stage pass - fix the
   underlying issue. If the failure is in the tests themselves because the
   tests were wrong, fix the test logic, don't remove coverage.
+- If the log above is a coverage-threshold shortfall (line/branch/function %
+  below the required minimum, with a list of uncovered lines), add test
+  cases that exercise those specific lines/branches - do not lower the
+  threshold or delete the coverage check, and don't add tests that don't
+  actually assert anything just to touch a line.
 EOF
 )"
 
