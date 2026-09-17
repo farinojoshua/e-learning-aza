@@ -97,7 +97,7 @@ pipeline {
 
     stage('Prepare') {
       steps {
-        sh '''
+        sh '''#!/usr/bin/env bash
           set -euo pipefail
           find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
           git clone --branch "$BASE_BRANCH" --single-branch \
@@ -114,7 +114,7 @@ pipeline {
           ).trim()
           env.BRANCH_NAME = "ai/issue-${env.ISSUE_NUMBER}-${env.SLUG}"
         }
-        sh '''
+        sh '''#!/usr/bin/env bash
           set -euo pipefail
           . ci/ai-pipeline/lib/guardrails.sh
           assert_safe_branch "$BRANCH_NAME"
@@ -126,7 +126,7 @@ pipeline {
 
     stage('AI Implement') {
       steps {
-        sh '''
+        sh '''#!/usr/bin/env bash
           set -euo pipefail
           podman run --rm \
             -v "$WORKSPACE:/workspace:Z" -w /workspace \
@@ -134,7 +134,7 @@ pipeline {
             "$CI_AGENT_IMAGE" \
             ci/ai-pipeline/ai-implement.sh
         '''
-        sh '''
+        sh '''#!/usr/bin/env bash
           set -euo pipefail
           . ci/ai-pipeline/lib/guardrails.sh
           check_forbidden_paths
@@ -161,14 +161,14 @@ pipeline {
           // works nested inside a script{} block in declarative pipelines.
           def checks = [:]
           checks['build'] = {
-            sh '''
+            sh '''#!/usr/bin/env bash
               set -euo pipefail
               podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
                 sh -c "npm ci && npm run build --if-present" 2>&1 | tee build.log
             '''
           }
           checks['unit-test'] = {
-            sh '''
+            sh '''#!/usr/bin/env bash
               set -euo pipefail
               podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
                 npm test 2>&1 | tee unit-test.log
@@ -180,7 +180,7 @@ pipeline {
           if (params.ENABLE_SONARQUBE) {
             checks['sonarqube'] = {
               withSonarQubeEnv('SonarQube') {
-                sh '''
+                sh '''#!/usr/bin/env bash
                   set -euo pipefail
                   podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace --network host \
                     -e SONAR_HOST_URL -e SONAR_AUTH_TOKEN "$CI_AGENT_IMAGE" \
@@ -197,7 +197,7 @@ pipeline {
             }
           }
           checks['trivy'] = {
-            sh '''
+            sh '''#!/usr/bin/env bash
               set -euo pipefail
               podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
                 trivy fs --exit-code 1 --severity HIGH,CRITICAL . 2>&1 | tee trivy.log
@@ -233,7 +233,7 @@ pipeline {
               env.FAILED_STAGE = failedStage
               env.FAILURE_LOG_FILE = "${failedStage}.log"
               stage("AI fix (attempt ${attempt}: ${failedStage})") {
-                sh '''
+                sh '''#!/usr/bin/env bash
                   set -euo pipefail
                   podman run --rm \
                     -v "$WORKSPACE:/workspace:Z" -w /workspace \
@@ -242,7 +242,7 @@ pipeline {
                     "$CI_AGENT_IMAGE" \
                     ci/ai-pipeline/ai-fix.sh
                 '''
-                sh '''
+                sh '''#!/usr/bin/env bash
                   set -euo pipefail
                   . ci/ai-pipeline/lib/guardrails.sh
                   check_forbidden_paths
@@ -276,7 +276,7 @@ pipeline {
             returnStdout: true
           ).trim()
         }
-        sh '''
+        sh '''#!/usr/bin/env bash
           set -euo pipefail
           podman run --rm \
             -v "$WORKSPACE:/workspace:Z" -w /workspace \
@@ -291,7 +291,7 @@ pipeline {
     stage('Report failure') {
       when { environment name: 'VALIDATION_PASSED', value: 'false' }
       steps {
-        sh '''
+        sh '''#!/usr/bin/env bash
           set -euo pipefail
           podman run --rm \
             -v "$WORKSPACE:/workspace:Z" -w /workspace \
