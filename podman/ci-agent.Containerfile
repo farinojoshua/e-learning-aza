@@ -5,7 +5,7 @@
 # ARGs on a schedule, review the changelog, rebuild, re-test.
 FROM node:20-bookworm-slim
 
-ARG TRIVY_VERSION=0.55.2
+ARG TRIVY_VERSION=0.74.0
 ARG SONAR_SCANNER_VERSION=6.1.0.4477
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
