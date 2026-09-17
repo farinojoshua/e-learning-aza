@@ -36,6 +36,10 @@ pipeline {
                          'Deliberately NOT read from the webhook payload, so a ' +
                          'crafted webhook can never redirect this job at an ' +
                          'arbitrary repo.')
+    booleanParam(name: 'ENABLE_SONARQUBE', defaultValue: false,
+           description: 'Run the SonarQube analysis stage. Off by default until ' +
+                         'a SonarQube server named "SonarQube" is configured in ' +
+                         'Manage Jenkins - see SETUP.md.')
   }
 
   options {
@@ -155,22 +159,26 @@ pipeline {
           // the Stage View, same as a normal multi-stage pipeline would -
           // this is a step function, not special plugin config, and it
           // works nested inside a script{} block in declarative pipelines.
-          def checks = [
-            'build': {
-              sh '''
-                set -euo pipefail
-                podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
-                  sh -c "npm ci && npm run build --if-present" 2>&1 | tee build.log
-              '''
-            },
-            'unit-test': {
-              sh '''
-                set -euo pipefail
-                podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
-                  npm test 2>&1 | tee unit-test.log
-              '''
-            },
-            'sonarqube': {
+          def checks = [:]
+          checks['build'] = {
+            sh '''
+              set -euo pipefail
+              podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
+                sh -c "npm ci && npm run build --if-present" 2>&1 | tee build.log
+            '''
+          }
+          checks['unit-test'] = {
+            sh '''
+              set -euo pipefail
+              podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
+                npm test 2>&1 | tee unit-test.log
+            '''
+          }
+          // Off by default (ENABLE_SONARQUBE param) until a SonarQube server
+          // is configured in Manage Jenkins - see SETUP.md. Flip the param
+          // default to true once that's done, no other change needed.
+          if (params.ENABLE_SONARQUBE) {
+            checks['sonarqube'] = {
               withSonarQubeEnv('SonarQube') {
                 sh '''
                   set -euo pipefail
@@ -186,15 +194,15 @@ pipeline {
                   error("SonarQube quality gate failed: ${qg.status}")
                 }
               }
-            },
-            'trivy': {
-              sh '''
-                set -euo pipefail
-                podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
-                  trivy fs --exit-code 1 --severity HIGH,CRITICAL . 2>&1 | tee trivy.log
-              '''
             }
-          ]
+          }
+          checks['trivy'] = {
+            sh '''
+              set -euo pipefail
+              podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
+                trivy fs --exit-code 1 --severity HIGH,CRITICAL . 2>&1 | tee trivy.log
+            '''
+          }
 
           boolean passed = false
           String failedStage = ''
