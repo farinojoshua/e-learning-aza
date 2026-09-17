@@ -1,0 +1,30 @@
+# Deny-list of glob patterns the AI must never create, modify, or delete.
+# Consumed by:
+#   - ci/ai-pipeline/lib/guardrails.sh (check_forbidden_paths, reactive check)
+#   - ci/ai-pipeline/claude-settings.ci.json (permissions.deny, proactive check)
+# Keep these two in sync when you change this file.
+
+# Credentials / secrets
+**/.env
+**/.env.*
+**/*secret*
+**/*credential*
+**/*.pem
+**/*.key
+**/*.pfx
+**/id_rsa*
+**/id_ed25519*
+
+# CI/CD pipeline definition itself
+Jenkinsfile
+ci/**
+podman/**
+.github/workflows/**
+
+# Deployment / infra config - deploy must stay a manual, human-triggered action
+k8s/**
+deploy/**
+infra/**
+terraform/**
+docker-compose*.yml
+docker-compose*.yaml

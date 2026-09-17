@@ -1,0 +1,13 @@
+{
+  "name": "e-learning-aza",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Simple e-learning course catalog - demo/test project for the AI CI/CD pipeline",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
