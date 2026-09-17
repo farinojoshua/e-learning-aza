@@ -27,8 +27,10 @@ pipeline {
   agent { label 'podman' }
 
   parameters {
-    string(name: 'MAX_FIX_ATTEMPTS', defaultValue: '3',
-           description: 'Max self-heal (validate -> AI fix) attempts before giving up')
+    string(name: 'MAX_FIX_ATTEMPTS', defaultValue: '2',
+           description: 'Max self-heal (validate -> AI fix) attempts before giving up. ' +
+                         'Each attempt is a full Claude Code CLI invocation - lower this ' +
+                         'if AI usage/cost matters more than resilience to you.')
     string(name: 'BASE_BRANCH', defaultValue: 'main',
            description: 'Branch the generated PR targets')
     string(name: 'GIT_REPO_SLUG', defaultValue: 'farinojoshua/e-learning-aza',
@@ -40,6 +42,10 @@ pipeline {
            description: 'Run the SonarQube analysis stage. Off by default until ' +
                          'a SonarQube server named "SonarQube" is configured in ' +
                          'Manage Jenkins - see SETUP.md.')
+    booleanParam(name: 'ENABLE_TRIVY', defaultValue: false,
+           description: 'Run the Trivy security scan stage. Off by default while ' +
+                         'iterating (a failing scan burns an AI fix attempt) - flip ' +
+                         'to true before relying on this for anything real.')
   }
 
   options {
@@ -128,8 +134,13 @@ pipeline {
       steps {
         sh '''#!/usr/bin/env bash
           set -euo pipefail
+          # HOME points inside the bind-mounted workspace (not the container's
+          # own ephemeral filesystem) so Claude's session state written here
+          # survives into the next `podman run` for ai-fix.sh, even though
+          # each container is --rm. Same HOME used below for the fix attempt.
           podman run --rm \
             -v "$WORKSPACE:/workspace:Z" -w /workspace \
+            -e HOME=/workspace/.claude-home \
             -e ISSUE_NUMBER -e ISSUE_TITLE -e ISSUE_BODY -e CLAUDE_CODE_OAUTH_TOKEN \
             "$CI_AGENT_IMAGE" \
             ci/ai-pipeline/ai-implement.sh
@@ -199,12 +210,19 @@ pipeline {
               }
             }
           }
-          checks['trivy'] = {
-            sh '''#!/usr/bin/env bash
-              set -euo pipefail
-              podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
-                trivy fs --exit-code 1 --severity HIGH,CRITICAL . 2>&1 | tee trivy.log
-            '''
+          // Off by default (ENABLE_TRIVY param) while iterating on the demo -
+          // Trivy itself costs no Claude tokens, but a failing scan triggers
+          // an AI fix attempt (which does), so disabling it here cuts one
+          // more path that can burn a retry. Flip the param default to true
+          // once you want the real security gate back.
+          if (params.ENABLE_TRIVY) {
+            checks['trivy'] = {
+              sh '''#!/usr/bin/env bash
+                set -euo pipefail
+                podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
+                  trivy fs --exit-code 1 --severity HIGH,CRITICAL . 2>&1 | tee trivy.log
+              '''
+            }
           }
 
           boolean passed = false
@@ -240,6 +258,7 @@ pipeline {
                   set -euo pipefail
                   podman run --rm \
                     -v "$WORKSPACE:/workspace:Z" -w /workspace \
+                    -e HOME=/workspace/.claude-home \
                     -e ISSUE_NUMBER -e CLAUDE_CODE_OAUTH_TOKEN -e FAILED_STAGE \
                     -e FAILURE_LOG_FILE -e ATTEMPT -e MAX_FIX_ATTEMPTS \
                     "$CI_AGENT_IMAGE" \

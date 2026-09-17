@@ -54,8 +54,23 @@ Instructions:
 EOF
 )"
 
+# Resume the AI Implement session if we have one (same HOME as that step,
+# mounted from the workspace - see the Jenkinsfile), so this fix attempt
+# doesn't have to re-explore the repo from a blank slate. Falls back to a
+# fresh session if the file's missing, which just costs more tokens, not
+# correctness.
+SESSION_ID_FILE=".claude-session-id"
+RESUME_ARGS=()
+if [[ -f "$SESSION_ID_FILE" ]]; then
+  RESUME_ARGS=(--resume "$(cat "$SESSION_ID_FILE")")
+  log "Resuming session $(cat "$SESSION_ID_FILE") for this fix attempt"
+else
+  log "No prior session file found, starting a fresh session for this fix attempt"
+fi
+
 log "Invoking Claude Code CLI to fix '${FAILED_STAGE}' (attempt ${ATTEMPT}/${MAX_FIX_ATTEMPTS})"
 if ! claude -p "$PROMPT" \
+  "${RESUME_ARGS[@]}" \
   --settings "$SETTINGS_FILE" \
   --permission-mode acceptEdits \
   --max-turns "$MAX_TURNS" \

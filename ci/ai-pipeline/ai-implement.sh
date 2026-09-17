@@ -22,6 +22,17 @@ RESULT_JSON="${AI_RESULT_JSON:-ai-implement-result.json}"
 MAX_TURNS="${AI_MAX_TURNS:-30}"
 SETTINGS_FILE="$SCRIPT_DIR/claude-settings.ci.json"
 
+# Own a session ID up front (rather than parsing one out of the JSON result)
+# and write it to the workspace so ai-fix.sh can --resume it instead of
+# starting a brand new session per fix attempt. Requires the caller to run
+# this with HOME pointed at a path under the workspace (so session state
+# actually persists to the next `podman run`, since containers are --rm) -
+# see the Jenkinsfile. Falls back to a fresh session next time if this file
+# is missing; never fatal on its own.
+SESSION_ID_FILE=".claude-session-id"
+SESSION_ID="$(cat /proc/sys/kernel/random/uuid)"
+echo "$SESSION_ID" > "$SESSION_ID_FILE"
+
 # ISSUE_TITLE / ISSUE_BODY are attacker-controlled (anyone who can open an
 # issue controls this text). They are only ever used as plain prompt text
 # here, never passed through eval/sh -c, so there is no shell-injection
@@ -48,8 +59,9 @@ Instructions:
 EOF
 )"
 
-log "Invoking Claude Code CLI to implement issue #${ISSUE_NUMBER}"
+log "Invoking Claude Code CLI to implement issue #${ISSUE_NUMBER} (session $SESSION_ID)"
 if ! claude -p "$PROMPT" \
+  --session-id "$SESSION_ID" \
   --settings "$SETTINGS_FILE" \
   --permission-mode acceptEdits \
   --max-turns "$MAX_TURNS" \
