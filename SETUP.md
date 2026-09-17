@@ -116,6 +116,14 @@ the top of the file says so explicitly. This pipeline's job ends at opening a
 PR to `main`. Whatever you already do to deploy stays exactly as it is,
 triggered by a human, outside of Jenkins automation.
 
+## 9b. Add a CLAUDE.md to whatever repo you point this at
+
+Claude Code CLI auto-loads `CLAUDE.md` from the repo root at the start of
+every session, including the pipeline's headless runs - put your project's
+conventions, test setup, and coverage/dependency rules there once instead
+of restating them in every prompt in `ci/ai-pipeline/*.sh`. See this repo's
+own `CLAUDE.md` for an example of what that looks like.
+
 ## 10. Before trusting this in production
 
 - This was written and syntax-checked (`bash -n`, brace-balance check on the
