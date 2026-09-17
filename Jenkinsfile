@@ -300,12 +300,17 @@ pipeline {
         }
         sh '''#!/usr/bin/env bash
           set -euo pipefail
+          # Best-effort: the PR is the actual deliverable and it already
+          # exists at this point. Don't fail the whole build over a comment
+          # (e.g. missing "Issues" permission on the PAT, a transient GitHub
+          # API hiccup) when the thing that matters already succeeded.
           podman run --rm \
             -v "$WORKSPACE:/workspace:Z" -w /workspace \
             -e ISSUE_NUMBER -e GITHUB_TOKEN -e PR_URL \
             -e STATUS=success \
             "$CI_AGENT_IMAGE" \
-            ci/ai-pipeline/notify-issue.sh
+            ci/ai-pipeline/notify-issue.sh \
+            || echo "WARNING: failed to post the success comment on issue #${ISSUE_NUMBER} (non-fatal, PR was already created: ${PR_URL})"
         '''
       }
     }
@@ -315,12 +320,15 @@ pipeline {
       steps {
         sh '''#!/usr/bin/env bash
           set -euo pipefail
+          # Best-effort, same reasoning as the success path in 'Create PR' -
+          # the build is already going to be marked FAILURE either way.
           podman run --rm \
             -v "$WORKSPACE:/workspace:Z" -w /workspace \
             -e ISSUE_NUMBER -e GITHUB_TOKEN -e FAILED_STAGE -e MAX_FIX_ATTEMPTS \
             -e BUILD_URL="$BUILD_URL" -e STATUS=failure \
             "$CI_AGENT_IMAGE" \
-            ci/ai-pipeline/notify-issue.sh
+            ci/ai-pipeline/notify-issue.sh \
+            || echo "WARNING: failed to post the failure comment on issue #${ISSUE_NUMBER} (non-fatal)"
         '''
         script { currentBuild.result = 'FAILURE' }
       }
