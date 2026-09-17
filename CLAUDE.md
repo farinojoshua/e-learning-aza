@@ -41,6 +41,17 @@ Do not add new npm dependencies without being explicitly asked to. This
 repo is kept dependency-free on purpose (faster `npm ci`, smaller attack
 surface, no lockfile drift) - reach for a built-in Node.js module first.
 
+## Keeping this file current
+
+If you add a new module, establish a pattern not already described above, or
+introduce a convention future sessions should follow, update the relevant
+section of this file as part of your change - don't wait to be asked. Keep
+entries short and about lasting conventions only (the "how we build things
+here" level), not this issue's specific implementation details, which belong
+in the code/tests/PR description instead. This file changes land in the same
+PR as the feature, so it goes through the same human review as everything
+else - there's no separate fast path.
+
 ## If you're the AI CI/CD pipeline (ai-write-tests.sh / ai-implement.sh / ai-fix.sh)
 
 - Never run `git commit`, `git push`, or any `gh` command - the pipeline
