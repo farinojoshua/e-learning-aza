@@ -109,7 +109,7 @@ pipeline {
           // slugify runs in bash, output is guaranteed [a-z0-9-] only - safe
           // to Groovy-interpolate from this point on, unlike the raw title.
           env.SLUG = sh(
-            script: '. ci/ai-pipeline/lib/common.sh; slugify "$ISSUE_TITLE"',
+            script: '#!/usr/bin/env bash\n. ci/ai-pipeline/lib/common.sh; slugify "$ISSUE_TITLE"',
             returnStdout: true
           ).trim()
           env.BRANCH_NAME = "ai/issue-${env.ISSUE_NUMBER}-${env.SLUG}"
