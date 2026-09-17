@@ -141,7 +141,10 @@ pipeline {
           assert_safe_branch "$BRANCH_NAME"
           git add -A
           git commit -m "AI: implement issue #${ISSUE_NUMBER} - ${ISSUE_TITLE}"
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GIT_REPO_SLUG}.git" "$BRANCH_NAME"
+          # --force: this branch is exclusively owned/written by this pipeline
+          # (never by a human), so a retriggered run for the same issue should
+          # replace the previous AI attempt outright, not merge with it.
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GIT_REPO_SLUG}.git" "$BRANCH_NAME"
         '''
       }
     }
