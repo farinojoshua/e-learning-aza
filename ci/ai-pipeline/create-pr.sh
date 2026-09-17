@@ -39,6 +39,14 @@ Validation summary:
 - Trivy scan (HIGH/CRITICAL): passed
 EOF
 
+# Idempotent: creates the label on first run, silently no-ops on every run
+# after that. Without this, `gh pr create --label` fails outright on a repo
+# where nobody has manually created "ai-generated" yet.
+gh label create "ai-generated" \
+  --color "5319E7" \
+  --description "Opened automatically by the AI CI pipeline" \
+  2>/dev/null || true
+
 log "Opening PR: ${BRANCH_NAME} -> ${BASE_BRANCH}"
 gh pr create \
   --title "AI: ${ISSUE_TITLE} (closes #${ISSUE_NUMBER})" \
