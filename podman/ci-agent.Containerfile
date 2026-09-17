@@ -21,9 +21,13 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Trivy, pinned to the tag matching TRIVY_VERSION (not a mutable branch ref).
-RUN curl -fsSL "https://raw.githubusercontent.com/aquasecurity/trivy/v${TRIVY_VERSION}/contrib/install.sh" \
-      | sh -s -- -b /usr/local/bin "v${TRIVY_VERSION}"
+# Trivy - fetch the release tarball directly instead of piping the upstream
+# install.sh through sh (that script is flaky in minimal images - fails with
+# a bare "exit status 1" and no useful error on some bases).
+RUN curl -fsSL -o /tmp/trivy.tar.gz \
+      "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+    && tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy \
+    && rm /tmp/trivy.tar.gz
 
 # SonarQube Scanner CLI.
 RUN curl -fsSL -o /tmp/sonar-scanner.zip \
