@@ -90,7 +90,7 @@ pipeline {
 
   stages {
 
-    stage('Guard: validate webhook input') {
+    stage('Check Access') {
       steps {
         script {
           if (!(env.ISSUE_LABELS ?: '').contains('ai-task')) {
@@ -107,7 +107,7 @@ pipeline {
       }
     }
 
-    stage('Prepare') {
+    stage('Create Branch') {
       steps {
         sh '''#!/usr/bin/env bash
           set -euo pipefail
@@ -193,7 +193,7 @@ pipeline {
       }
     }
 
-    stage('Validate with bounded self-heal') {
+    stage('Validate') {
       steps {
         script {
           int maxAttempts = params.MAX_FIX_ATTEMPTS.toInteger()
@@ -207,11 +207,15 @@ pipeline {
           // this is a step function, not special plugin config, and it
           // works nested inside a script{} block in declarative pipelines.
           def checks = [:]
-          checks['build'] = {
+          // Named 'install-deps' rather than 'build' - this repo has no real
+          // build step (npm run build --if-present just no-ops here), so
+          // calling it "build" was misleading. Runs npm ci + whatever real
+          // build a less minimal repo might define.
+          checks['install-deps'] = {
             sh '''#!/usr/bin/env bash
               set -euo pipefail
               podman run --rm -v "$WORKSPACE:/workspace:Z" -w /workspace "$CI_AGENT_IMAGE" \
-                sh -c "npm ci && npm run build --if-present" 2>&1 | tee build.log
+                sh -c "npm ci && npm run build --if-present" 2>&1 | tee install-deps.log
             '''
           }
           // Coverage threshold is enforced by node's own test runner (exits
