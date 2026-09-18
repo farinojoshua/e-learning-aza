@@ -22,6 +22,7 @@ require_numeric ISSUE_NUMBER "$ISSUE_NUMBER"
 
 RESULT_JSON="${AI_RESULT_JSON:-ai-implement-result.json}"
 MAX_TURNS="${AI_MAX_TURNS:-30}"
+CLAUDE_MODEL="${AI_MODEL:-sonnet}"
 SETTINGS_FILE="$SCRIPT_DIR/claude-settings.ci.json"
 
 # Resume the ai-write-tests.sh session (same HOME as that step, mounted from
@@ -71,6 +72,7 @@ EOF
 log "Invoking Claude Code CLI to implement issue #${ISSUE_NUMBER}"
 if ! claude -p "$PROMPT" \
   "${RESUME_ARGS[@]}" \
+  --model "$CLAUDE_MODEL" \
   --settings "$SETTINGS_FILE" \
   --permission-mode acceptEdits \
   --max-turns "$MAX_TURNS" \

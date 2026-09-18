@@ -19,6 +19,7 @@ require_numeric ISSUE_NUMBER "$ISSUE_NUMBER"
 
 RESULT_JSON="${AI_RESULT_JSON:-ai-write-tests-result.json}"
 MAX_TURNS="${AI_MAX_TURNS:-30}"
+CLAUDE_MODEL="${AI_MODEL:-sonnet}"
 SETTINGS_FILE="$SCRIPT_DIR/claude-settings.ci.json"
 
 # Owns the session for this whole issue - written to the workspace so
@@ -69,6 +70,7 @@ EOF
 log "Invoking Claude Code CLI to write tests for issue #${ISSUE_NUMBER} (session $SESSION_ID)"
 if ! claude -p "$PROMPT" \
   --session-id "$SESSION_ID" \
+  --model "$CLAUDE_MODEL" \
   --settings "$SETTINGS_FILE" \
   --permission-mode acceptEdits \
   --max-turns "$MAX_TURNS" \

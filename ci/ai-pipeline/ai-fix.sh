@@ -24,6 +24,7 @@ require_numeric MAX_FIX_ATTEMPTS "$MAX_FIX_ATTEMPTS"
 
 RESULT_JSON="${AI_RESULT_JSON:-ai-fix-result.json}"
 MAX_TURNS="${AI_MAX_TURNS:-30}"
+CLAUDE_MODEL="${AI_MODEL:-sonnet}"
 SETTINGS_FILE="$SCRIPT_DIR/claude-settings.ci.json"
 LOG_EXCERPT="$(tail -c 8000 "$FAILURE_LOG_FILE")"
 
@@ -76,6 +77,7 @@ fi
 log "Invoking Claude Code CLI to fix '${FAILED_STAGE}' (attempt ${ATTEMPT}/${MAX_FIX_ATTEMPTS})"
 if ! claude -p "$PROMPT" \
   "${RESUME_ARGS[@]}" \
+  --model "$CLAUDE_MODEL" \
   --settings "$SETTINGS_FILE" \
   --permission-mode acceptEdits \
   --max-turns "$MAX_TURNS" \
