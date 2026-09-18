@@ -41,3 +41,21 @@ export function login(username, password) {
 export function userExists(username) {
   return users.has(username);
 }
+
+export function changePassword(username, oldPassword, newPassword) {
+  const user = users.get(username);
+  if (!user) {
+    throw new Error(`User not found: ${username}`);
+  }
+  if (!login(username, oldPassword)) {
+    throw new Error('Old password is incorrect');
+  }
+  if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
+    throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+  }
+
+  const salt = randomBytes(16).toString('hex');
+  user.salt = salt;
+  user.passwordHash = hashPassword(newPassword, salt);
+  return true;
+}
