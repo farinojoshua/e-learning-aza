@@ -30,6 +30,22 @@ export function enrollStudent(courseId, studentName) {
   return updated.length;
 }
 
+export function unenrollStudent(courseId, studentName) {
+  const course = getCourse(courseId);
+  if (!course) {
+    throw new Error(`Course not found: ${courseId}`);
+  }
+
+  const current = enrollments.get(courseId) ?? [];
+  if (!current.includes(studentName)) {
+    throw new Error(`Student not enrolled: ${studentName} in ${courseId}`);
+  }
+
+  const updated = current.filter((name) => name !== studentName);
+  enrollments.set(courseId, updated);
+  return updated.length;
+}
+
 export function getEnrollmentCount(courseId) {
   return (enrollments.get(courseId) ?? []).length;
 }
